@@ -2,8 +2,9 @@
 
 import {
   Camera, CameraOff, Check, Copy, Link2, Lock, Mic, MicOff,
-  PhoneOff, Radio, Video,
+  PhoneOff, Radio, Sparkles, Video,
 } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -77,7 +78,12 @@ export default function Home() {
     clientIdRef.current = createClientId();
     const params = new URLSearchParams(window.location.search);
     const code = params.get("room")?.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6) ?? "";
-    if (code) { setJoinCode(code); setStatusText(`You were invited to room ${code}`); }
+    if (!code) return;
+    const timer = window.setTimeout(() => {
+      setJoinCode(code);
+      setStatusText(`You were invited to room ${code}`);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   const sendSignal = useCallback(async (kind: SignalRow["kind"], payload: unknown = {}) => {
@@ -240,7 +246,7 @@ export default function Home() {
     <TooltipProvider>
       <main className="app-shell">
         <header className="topbar">
-          <a className="brand" href="/" aria-label="LinkRoom home"><span className="brand-mark"><Video /></span><span>LinkRoom</span></a>
+          <Link className="brand" href="/" aria-label="LinkRoom home"><span className="brand-mark"><Video /></span><span>LinkRoom</span></Link>
           <div className="top-status" aria-live="polite"><span className={`status-dot ${callState === "connected" ? "connected" : ""}`} />{statusText}</div>
           <span className="privacy-pill"><Lock /> Peer-to-peer</span>
         </header>
@@ -267,7 +273,7 @@ export default function Home() {
         ) : (
           <section className="home-grid">
             <div className="home-intro">
-              <span className="eyebrow"><Radio /> Simple video chat</span>
+              <span className="eyebrow"><Sparkles /> Simple video chat</span>
               <h1>Meet face to face.<br /><em>No account needed.</em></h1>
               <p>Create a private room, share one link, and start talking. Your audio and video travel directly between callers.</p>
               <div className="trust-row"><span><Lock /> Private room codes</span><span><Link2 /> One link to join</span><span><Radio /> Live connection status</span></div>
@@ -275,7 +281,7 @@ export default function Home() {
 
             <div className="join-panel">
               <div className="private-panel">
-                <div className="panel-heading"><div><span className="eyebrow">Start here</span><h2>Create or join a room</h2></div><span className="ready-badge">Ready</span></div>
+                <div className="panel-heading"><div><span className="eyebrow">Private video call</span><h2>Create or join a room</h2></div></div>
                 <label className="field-label" htmlFor="display-name">Your name</label>
                 <Input id="display-name" value={displayName} maxLength={40} onChange={(event) => setDisplayName(event.target.value)} placeholder="What should people call you?" />
                 {joinCode.length === 6 && (
