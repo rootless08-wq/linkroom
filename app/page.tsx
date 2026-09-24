@@ -1,5 +1,4 @@
 "use client";
-import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Video, Shuffle, Mic, MicOff, Camera, CameraOff, SwitchCamera, PhoneOff, Flag, Ban, Send, Lock, MessageSquare, Link2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -35,7 +34,7 @@ export default function Home() {
   }
   return <main className={`app-shell ${active?"random-active":""}`}>
     <header className="topbar">
-      <Link className="brand" href="/" aria-label="LinkRoom home"><span className="brand-mark"><Video/></span>LinkRoom</Link>
+      <a className="brand" href="/" aria-label="LinkRoom home"><span className="brand-mark"><Video/></span>LinkRoom</a>
       <div className="top-status"><span className={`status-dot ${view.phase==="connected"?"connected":""}`}/>{active ? "Random video chat" : "A new conversation starts here"}</div>
       <span className="privacy-pill"><Lock/> Peer-to-peer</span>
     </header>
@@ -48,7 +47,7 @@ export default function Home() {
         <Button size="lg" className="primary-action" disabled={!agreed||busy} onClick={()=>{setNotice("");void controller.current?.start();}}><Video/> Start Chat</Button>
         <p className={view.phase==="error"?"error-message":"permission-note"} role="status">{view.status}</p>
         <div className="divider"><span>Know who you want to call?</span></div>
-        <Link className="private-link" href="/private"><Link2/> Create or join a private room</Link>
+        <a className="private-link" href="/private"><Link2/> Create or join a private room</a>
         <p className="safety-note">You can stop, report, or block at any time. Calls aren’t recorded by LinkRoom. Other people can still capture your screen or see connection details.</p>
       </div></div>
     </section> : <section className="random-stage" aria-label="Random video chat">
@@ -74,3 +73,4 @@ export default function Home() {
     <Dialog open={report} onOpenChange={setReport}><DialogContent><DialogHeader><DialogTitle>Report this conversation</DialogTitle><DialogDescription>Your report is saved for review. Submitting also blocks this person and moves you to the next chat. No video or chat transcript is attached.</DialogDescription></DialogHeader><label htmlFor="report-reason">What happened?</label><NativeSelect id="report-reason" value={reason} onChange={event=>setReason(event.target.value)}>{["Nudity or sexual content","Harassment or hate","Spam or scam","Underage user","Other"].map(value=><NativeSelectOption key={value}>{value}</NativeSelectOption>)}</NativeSelect><p className="safety-note">This is an early version; reports aren’t monitored live. Blocking applies while this browser keeps its guest cookie.</p><DialogFooter><Button variant="outline" onClick={()=>setReport(false)}>Cancel</Button><Button onClick={()=>void next("report")} disabled={busy||!view.room}>{busy?"Saving…":"Report and next"}</Button></DialogFooter></DialogContent></Dialog>
   </main>;
 }
+

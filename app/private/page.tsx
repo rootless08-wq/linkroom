@@ -4,7 +4,6 @@ import {
   Camera, CameraOff, Check, Copy, Link2, Lock, Mic, MicOff,
   PhoneOff, Radio, Sparkles, Video, SwitchCamera,
 } from "lucide-react";
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -213,13 +212,25 @@ export default function Home() {
 
   const createRoom = useCallback(async (name = displayName) => {
     setCallState("starting"); setStatusText("Creating your room…");
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      const code = createRoomCode();
-      const response = await fetch("/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code }) });
-      if (response.ok) { await enterRoom(code, "host", name); return { room: code }; }
+    try {
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const code = createRoomCode();
+        const response = await fetch("/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code }), signal: AbortSignal.timeout(15000) });
+        if (response.ok) { await enterRoom(code, "host", name); return { room: code }; }
+        if (response.status !== 409) {
+          const result = await response.json().catch(() => ({})) as { error?: string };
+          throw new Error(result.error || "Could not create a room. Please try again.");
+        }
+      }
+      throw new Error("Could not create a unique room. Please try again.");
+    } catch (error) {
+      setCallState("error");
+      setStatusText(error instanceof Error && error.name === "TimeoutError"
+        ? "The room service took too long. Please try again."
+        : error instanceof TypeError
+          ? "Could not reach the room service. Check your connection or browser blocking settings, then try again."
+          : error instanceof Error ? error.message : "Could not create a room. Please try again.");
     }
-    setCallState("error"); setStatusText("Could not create a room. Please try again.");
-    throw new Error("Room creation failed");
   }, [displayName, enterRoom]);
 
   const endCall = useCallback(async () => {
@@ -263,7 +274,7 @@ export default function Home() {
     <TooltipProvider>
       <main className="app-shell">
         <header className="topbar">
-          <Link className="brand" href="/" aria-label="LinkRoom home"><span className="brand-mark"><Video /></span><span>LinkRoom</span></Link>
+          <a className="brand" href="/" aria-label="LinkRoom home"><span className="brand-mark"><Video /></span><span>LinkRoom</span></a>
           <div className="top-status" aria-live="polite"><span className={`status-dot ${callState === "connected" ? "connected" : ""}`} />{statusText}</div>
           <span className="privacy-pill"><Lock /> Peer-to-peer</span>
         </header>
@@ -322,3 +333,4 @@ export default function Home() {
     </TooltipProvider>
   );
 }
+
