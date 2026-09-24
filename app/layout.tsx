@@ -2,10 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "LinkRoom — Simple private video calls",
-  description: "Create a private room, share one link, and talk face to face.",
-  authors: [{ name: "Jayant Adhikary" }],
-  creator: "Jayant Adhikary",
+  title: "LinkRoom — Meet someone new",
+  description: "Free one-to-one video and text chat. Meet someone at random or share a private room link.",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",

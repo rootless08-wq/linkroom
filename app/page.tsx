@@ -1,306 +1,76 @@
 "use client";
-
-import {
-  Camera, CameraOff, Check, Copy, Link2, Lock, Mic, MicOff,
-  PhoneOff, Radio, Sparkles, Video,
-} from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Video, Shuffle, Mic, MicOff, Camera, CameraOff, SwitchCamera, PhoneOff, Flag, Ban, Send, Lock, MessageSquare, Link2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { RandomChat, type ViewState } from "@/lib/random-client";
 
-type RoomRole = "host" | "guest";
-type CallState = "idle" | "starting" | "waiting" | "connecting" | "connected" | "ended" | "error";
-type SignalRow = { id: number; sender: string; kind: "presence" | "offer" | "answer" | "ice" | "leave"; payload: unknown };
-
-const rtcConfig: RTCConfiguration = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
-
-function createRoomCode() {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  const bytes = crypto.getRandomValues(new Uint8Array(6));
-  return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("");
+function Feed({stream,muted=false}: {stream:MediaStream|null;muted?:boolean}) {
+  const ref=useRef<HTMLVideoElement>(null);
+  useEffect(()=>{if(ref.current){ref.current.srcObject=stream;if(stream)void ref.current.play().catch(()=>{});}},[stream]);
+  return <video ref={ref} autoPlay playsInline muted={muted} aria-label={muted ? "Your camera" : "Stranger's camera"}/>;
 }
-
-function createClientId() {
-  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
-  const bytes = crypto.getRandomValues(new Uint8Array(16));
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
-function VideoTile({ videoRef, muted = false, label, empty }: { videoRef: React.RefObject<HTMLVideoElement | null>; muted?: boolean; label: string; empty?: boolean }) {
-  return (
-    <div className="video-tile">
-      <video ref={videoRef} autoPlay playsInline muted={muted} className={empty ? "opacity-0" : "opacity-100"} />
-      {empty && (
-        <div className="video-empty" aria-live="polite">
-          <span className="signal-orbit"><Radio /></span>
-          <strong>Waiting for someone to join</strong>
-          <small>Keep this tab open after sharing the room link.</small>
-        </div>
-      )}
-      <span className="video-label">{label}</span>
-    </div>
-  );
-}
-
 export default function Home() {
-  const [displayName, setDisplayName] = useState("");
-  const [joinCode, setJoinCode] = useState("");
-  const [roomCode, setRoomCode] = useState("");
-  const [role, setRole] = useState<RoomRole>("guest");
-  const [callState, setCallState] = useState<CallState>("idle");
-  const [statusText, setStatusText] = useState("Ready when you are");
-  const [micOn, setMicOn] = useState(true);
-  const [cameraOn, setCameraOn] = useState(true);
-  const [copied, setCopied] = useState(false);
-  const [remoteReady, setRemoteReady] = useState(false);
-
-  const localVideoRef = useRef<HTMLVideoElement>(null);
-  const remoteVideoRef = useRef<HTMLVideoElement>(null);
-  const localStreamRef = useRef<MediaStream | null>(null);
-  const peerRef = useRef<RTCPeerConnection | null>(null);
-  const pollingRef = useRef<number | null>(null);
-  const lastSignalRef = useRef(0);
-  const offerSentRef = useRef(false);
-  const pendingIceRef = useRef<RTCIceCandidateInit[]>([]);
-  const clientIdRef = useRef("");
-  const activeRoomRef = useRef("");
-  const roleRef = useRef<RoomRole>("guest");
-  const nameRef = useRef("");
-
-  const inviteUrl = useMemo(() => {
-    if (!roomCode || typeof window === "undefined") return "";
-    return `${window.location.origin}${window.location.pathname}?room=${roomCode}`;
-  }, [roomCode]);
-
-  useEffect(() => {
-    clientIdRef.current = createClientId();
-    const params = new URLSearchParams(window.location.search);
-    const code = params.get("room")?.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6) ?? "";
-    if (!code) return;
-    const timer = window.setTimeout(() => {
-      setJoinCode(code);
-      setStatusText(`You were invited to room ${code}`);
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, []);
-
-  const sendSignal = useCallback(async (kind: SignalRow["kind"], payload: unknown = {}) => {
-    const response = await fetch("/api/signals", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ room: activeRoomRef.current, sender: clientIdRef.current, kind, payload }),
-    });
-    if (!response.ok) throw new Error("Could not reach the room");
-  }, []);
-
-  const flushPendingIce = useCallback(async () => {
-    const peer = peerRef.current;
-    if (!peer?.remoteDescription) return;
-    const candidates = pendingIceRef.current.splice(0);
-    for (const candidate of candidates) await peer.addIceCandidate(candidate);
-  }, []);
-
-  const makeOffer = useCallback(async () => {
-    const peer = peerRef.current;
-    if (!peer || offerSentRef.current) return;
-    offerSentRef.current = true;
-    setCallState("connecting");
-    setStatusText("Connecting securely…");
-    const offer = await peer.createOffer();
-    await peer.setLocalDescription(offer);
-    await sendSignal("offer", offer);
-  }, [sendSignal]);
-
-  const handleSignals = useCallback(async (signals: SignalRow[]) => {
-    const peer = peerRef.current;
-    if (!peer) return;
-    for (const signal of signals) {
-      lastSignalRef.current = Math.max(lastSignalRef.current, signal.id);
-      if (signal.kind === "presence" && roleRef.current === "host") await makeOffer();
-      if (signal.kind === "offer" && roleRef.current === "guest" && !peer.remoteDescription) {
-        setCallState("connecting");
-        setStatusText("Joining the call…");
-        await peer.setRemoteDescription(signal.payload as RTCSessionDescriptionInit);
-        await flushPendingIce();
-        const answer = await peer.createAnswer();
-        await peer.setLocalDescription(answer);
-        await sendSignal("answer", answer);
-      }
-      if (signal.kind === "answer" && roleRef.current === "host" && !peer.remoteDescription) {
-        await peer.setRemoteDescription(signal.payload as RTCSessionDescriptionInit);
-        await flushPendingIce();
-      }
-      if (signal.kind === "ice") {
-        const candidate = signal.payload as RTCIceCandidateInit;
-        if (peer.remoteDescription) await peer.addIceCandidate(candidate);
-        else pendingIceRef.current.push(candidate);
-      }
-      if (signal.kind === "leave") {
-        setRemoteReady(false);
-        setCallState("waiting");
-        setStatusText("The other person left the room");
-      }
-    }
-  }, [flushPendingIce, makeOffer, sendSignal]);
-
-  const startPolling = useCallback(() => {
-    if (pollingRef.current) window.clearInterval(pollingRef.current);
-    const poll = async () => {
-      try {
-        const query = new URLSearchParams({ room: activeRoomRef.current, after: String(lastSignalRef.current), exclude: clientIdRef.current });
-        const response = await fetch(`/api/signals?${query}`, { cache: "no-store" });
-        if (!response.ok) return;
-        const data = (await response.json()) as { signals: SignalRow[] };
-        if (data.signals.length) await handleSignals(data.signals);
-      } catch { /* The next poll retries automatically. */ }
-    };
-    void poll();
-    pollingRef.current = window.setInterval(() => void poll(), 900);
-  }, [handleSignals]);
-
-  const preparePeer = useCallback((stream: MediaStream) => {
-    const peer = new RTCPeerConnection(rtcConfig);
-    peerRef.current = peer;
-    stream.getTracks().forEach((track) => peer.addTrack(track, stream));
-    peer.onicecandidate = (event) => { if (event.candidate) void sendSignal("ice", event.candidate.toJSON()); };
-    peer.ontrack = (event) => {
-      const [remoteStream] = event.streams;
-      if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteStream;
-      setRemoteReady(true);
-      setCallState("connected");
-      setStatusText("Connected");
-    };
-    peer.onconnectionstatechange = () => {
-      if (peer.connectionState === "connected") { setRemoteReady(true); setCallState("connected"); setStatusText("Connected"); }
-      if (["failed", "disconnected"].includes(peer.connectionState)) { setRemoteReady(false); setStatusText("Connection interrupted"); }
-    };
-  }, [sendSignal]);
-
-  const enterRoom = useCallback(async (code: string, nextRole: RoomRole, name = displayName) => {
-    const cleanCode = code.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
-    if (cleanCode.length !== 6) { setStatusText("Enter a valid 6-character room code"); setCallState("error"); return; }
-    setCallState("starting");
-    setStatusText("Requesting camera and microphone…");
-    try {
-      const roomCheck = await fetch(`/api/rooms?code=${cleanCode}`, { cache: "no-store" });
-      if (!roomCheck.ok) throw new Error("This room is unavailable or expired");
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
-        audio: { echoCancellation: true, noiseSuppression: true },
-      });
-      localStreamRef.current = stream;
-      if (localVideoRef.current) localVideoRef.current.srcObject = stream;
-      activeRoomRef.current = cleanCode;
-      roleRef.current = nextRole;
-      nameRef.current = name.trim() || "Guest";
-      setRoomCode(cleanCode); setRole(nextRole); setMicOn(true); setCameraOn(true); setRemoteReady(false);
-      lastSignalRef.current = 0; offerSentRef.current = false; pendingIceRef.current = [];
-      window.history.replaceState({}, "", `${window.location.pathname}?room=${cleanCode}${nextRole === "host" ? "&host=1" : ""}`);
-      preparePeer(stream);
-      await sendSignal("presence", { name: nameRef.current, role: nextRole });
-      setCallState("waiting");
-      setStatusText(nextRole === "host" ? "Room ready — share the link" : "Waiting for the host…");
-      startPolling();
-    } catch (error) {
-      setCallState("error");
-      setStatusText(error instanceof Error ? error.message : "Could not start the call");
-    }
-  }, [displayName, preparePeer, sendSignal, startPolling]);
-
-  const createRoom = useCallback(async (name = displayName) => {
-    setCallState("starting"); setStatusText("Creating your room…");
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      const code = createRoomCode();
-      const response = await fetch("/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code }) });
-      if (response.ok) { await enterRoom(code, "host", name); return { room: code }; }
-    }
-    setCallState("error"); setStatusText("Could not create a room. Please try again.");
-    throw new Error("Room creation failed");
-  }, [displayName, enterRoom]);
-
-  const endCall = useCallback(async () => {
-    if (activeRoomRef.current) { try { await sendSignal("leave"); } catch { /* best effort */ } }
-    if (pollingRef.current) window.clearInterval(pollingRef.current);
-    pollingRef.current = null;
-    peerRef.current?.close(); peerRef.current = null;
-    localStreamRef.current?.getTracks().forEach((track) => track.stop()); localStreamRef.current = null;
-    if (localVideoRef.current) localVideoRef.current.srcObject = null;
-    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
-    activeRoomRef.current = ""; setRoomCode(""); setRemoteReady(false); setCallState("ended"); setStatusText("Call ended");
-    window.history.replaceState({}, "", window.location.pathname);
-  }, [sendSignal]);
-
-  useEffect(() => () => {
-    if (pollingRef.current) window.clearInterval(pollingRef.current);
-    peerRef.current?.close(); localStreamRef.current?.getTracks().forEach((track) => track.stop());
-  }, []);
-
-  const toggleMic = () => { const next = !micOn; localStreamRef.current?.getAudioTracks().forEach((track) => { track.enabled = next; }); setMicOn(next); };
-  const toggleCamera = () => { const next = !cameraOn; localStreamRef.current?.getVideoTracks().forEach((track) => { track.enabled = next; }); setCameraOn(next); };
-  const copyInvite = async () => { if (!inviteUrl) return; await navigator.clipboard.writeText(inviteUrl); setCopied(true); window.setTimeout(() => setCopied(false), 1800); };
-  const inCall = Boolean(roomCode && ["starting", "waiting", "connecting", "connected"].includes(callState));
-
-  return (
-    <TooltipProvider>
-      <main className="app-shell">
-        <header className="topbar">
-          <Link className="brand" href="/" aria-label="LinkRoom home"><span className="brand-mark"><Video /></span><span>LinkRoom</span></Link>
-          <div className="top-status" aria-live="polite"><span className={`status-dot ${callState === "connected" ? "connected" : ""}`} />{statusText}</div>
-          <span className="privacy-pill"><Lock /> Peer-to-peer</span>
-        </header>
-
-        {inCall ? (
-          <section className="call-stage" aria-label="Video call room">
-            <div className="room-strip">
-              <div><span className="eyebrow">Private room</span><strong>{roomCode}</strong></div>
-              <Button variant="outline" className="copy-room" onClick={copyInvite}>{copied ? <Check /> : <Copy />} {copied ? "Copied" : "Copy invite"}</Button>
-            </div>
-            <div className="video-grid">
-              <VideoTile videoRef={remoteVideoRef} label={remoteReady ? "Connected guest" : "Open seat"} empty={!remoteReady} />
-              <div className="self-view">
-                <VideoTile videoRef={localVideoRef} muted label={`${displayName.trim() || "You"} · ${role}`} />
-                {!cameraOn && <div className="camera-off"><CameraOff /><span>Camera off</span></div>}
-              </div>
-            </div>
-            <div className="call-controls" aria-label="Call controls">
-              <Tooltip><TooltipTrigger asChild><Button size="icon-lg" variant={micOn ? "secondary" : "destructive"} onClick={toggleMic} aria-label={micOn ? "Mute microphone" : "Unmute microphone"}>{micOn ? <Mic /> : <MicOff />}</Button></TooltipTrigger><TooltipContent>{micOn ? "Mute" : "Unmute"}</TooltipContent></Tooltip>
-              <Tooltip><TooltipTrigger asChild><Button size="icon-lg" variant={cameraOn ? "secondary" : "destructive"} onClick={toggleCamera} aria-label={cameraOn ? "Turn camera off" : "Turn camera on"}>{cameraOn ? <Camera /> : <CameraOff />}</Button></TooltipTrigger><TooltipContent>{cameraOn ? "Camera off" : "Camera on"}</TooltipContent></Tooltip>
-              <Button className="end-call" onClick={endCall}><PhoneOff /> End call</Button>
-            </div>
-          </section>
-        ) : (
-          <section className="home-grid">
-            <div className="home-intro">
-              <span className="eyebrow"><Sparkles /> Simple video chat</span>
-              <h1>Meet face to face.<br /><em>No account needed.</em></h1>
-              <p>Create a private room, share one link, and start talking. Your audio and video travel directly between callers.</p>
-              <div className="trust-row"><span><Lock /> Private room codes</span><span><Link2 /> One link to join</span><span><Radio /> Live connection status</span></div>
-            </div>
-
-            <div className="join-panel">
-              <div className="private-panel">
-                <div className="panel-heading"><div><span className="eyebrow">Private video call</span><h2>Create or join a room</h2></div></div>
-                <label className="field-label" htmlFor="display-name">Your name</label>
-                <Input id="display-name" value={displayName} maxLength={40} onChange={(event) => setDisplayName(event.target.value)} placeholder="What should people call you?" />
-                {joinCode.length === 6 && (
-                  <div className="invite-card">
-                    <span><Link2 /> Invitation detected</span><strong>Join room {joinCode}</strong>
-                    <Button size="lg" onClick={() => void enterRoom(joinCode, "guest")} disabled={callState === "starting"}><Video /> {callState === "starting" ? "Opening camera…" : "Join this call"}</Button>
-                  </div>
-                )}
-                <Button size="lg" className="primary-action" onClick={() => void createRoom()} disabled={callState === "starting"}><Video /> {callState === "starting" ? "Creating room…" : "Create a private room"}</Button>
-                <div className="divider"><span>or join with a code</span></div>
-                <div className="code-row"><Input aria-label="Room code" className="code-input" value={joinCode} onChange={(event) => setJoinCode(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6))} placeholder="ABC123" /><Button variant="outline" size="lg" onClick={() => void enterRoom(joinCode, "guest")} disabled={joinCode.length !== 6 || callState === "starting"}>Join</Button></div>
-                {callState === "error" && <p className="error-message" role="alert">{statusText}</p>}
-                <p className="permission-note"><Camera /> You choose when to allow camera and microphone access.</p>
-              </div>
-            </div>
-          </section>
-        )}
-        <footer className="app-footer"><span>© 2026 Jayant Adhikary</span><span>Calls are not recorded</span></footer>
-      </main>
-    </TooltipProvider>
-  );
+  const controller=useRef<RandomChat|null>(null);
+  const [view,setView]=useState<ViewState>({phase:"idle",status:"Ready when you are",local:null,remote:null,mic:true,camera:true,switching:false,canText:false,room:"",messages:[]});
+  const [agreed,setAgreed]=useState(false), [draft,setDraft]=useState(""), [busy,setBusy]=useState(false);
+  const [report,setReport]=useState(false), [reason,setReason]=useState("Harassment or hate"), [notice,setNotice]=useState("");
+  const messageEnd=useRef<HTMLDivElement>(null);
+  useEffect(()=>{
+    if(new URLSearchParams(location.search).has("room")){location.replace(`/private${location.search}`);return;}
+    const chat=new RandomChat(setView);controller.current=chat;
+    const leave=()=>void chat.stop();window.addEventListener("pagehide",leave);
+    return()=>{window.removeEventListener("pagehide",leave);void chat.stop();controller.current=null;};
+  },[]);
+  useEffect(()=>{messageEnd.current?.scrollIntoView({block:"nearest"});},[view.messages]);
+  const active=!["idle","error"].includes(view.phase);
+  async function next(action:"join"|"block"|"report"="join") {
+    setBusy(true);setDraft("");
+    try {const ok=await controller.current?.next(action,reason);if(ok&&action!=="join"){setReport(false);setNotice(action==="report"?"Report saved for review. This person is blocked for this browser.":"This person is blocked for this browser.");}}
+    finally{setBusy(false);}
+  }
+  return <main className={`app-shell ${active?"random-active":""}`}>
+    <header className="topbar">
+      <Link className="brand" href="/" aria-label="LinkRoom home"><span className="brand-mark"><Video/></span>LinkRoom</Link>
+      <div className="top-status"><span className={`status-dot ${view.phase==="connected"?"connected":""}`}/>{active ? "Random video chat" : "A new conversation starts here"}</div>
+      <span className="privacy-pill"><Lock/> Peer-to-peer</span>
+    </header>
+    {!active ? <section className="home-grid">
+      <div className="home-intro"><span className="eyebrow"><Shuffle/> Meet someone new</span><h1>One click.<br/><em>A new connection.</em></h1><p>Meet someone at random for a one-to-one video chat. Say hello, share a moment, or move on whenever you like.</p><div className="trust-row"><span><Video/> Video + audio</span><span><MessageSquare/> Text chat</span><span><Lock/> No account needed</span></div></div>
+      <div className="join-panel"><div className="private-panel random-start">
+        <div className="panel-heading"><div><span className="eyebrow">Free to try</span><h2>Ready to say hello?</h2></div></div>
+        <p>Allow your camera and microphone, and we’ll find someone who’s ready to chat.</p>
+        <div className="consent"><Checkbox id="age-consent" checked={agreed} onCheckedChange={v=>setAgreed(v===true)}/><label htmlFor="age-consent">I’m 18 or older. I’ll be respectful and won’t share sexual content, harassment, or spam.</label></div>
+        <Button size="lg" className="primary-action" disabled={!agreed||busy} onClick={()=>{setNotice("");void controller.current?.start();}}><Video/> Start Chat</Button>
+        <p className={view.phase==="error"?"error-message":"permission-note"} role="status">{view.status}</p>
+        <div className="divider"><span>Know who you want to call?</span></div>
+        <Link className="private-link" href="/private"><Link2/> Create or join a private room</Link>
+        <p className="safety-note">You can stop, report, or block at any time. Calls aren’t recorded by LinkRoom. Other people can still capture your screen or see connection details.</p>
+      </div></div>
+    </section> : <section className="random-stage" aria-label="Random video chat">
+      <div className="session-heading"><div><span className="eyebrow">Random chat</span><p role="status" aria-live="polite">{view.status}</p></div><span className="session-badge">{view.phase==="connected"?"In conversation":view.phase==="waiting"?"In the queue":"Connecting"}</span></div>
+      <div className="conversation-grid">
+        <div className="video-arena">
+          <div className="stranger-video"><Feed stream={view.remote}/>{!view.remote&&<div className="video-empty"><span className="signal-orbit"><Shuffle/></span><strong>{view.phase==="waiting"?"Finding your next conversation":"Getting things ready"}</strong><small>{view.phase==="waiting"?"You’ll connect when another person joins. Keep this tab open.":"Your camera stays in the small preview below."}</small></div>}<span className="video-label">{view.phase==="connected"?"Stranger":"Waiting for a match"}</span></div>
+          <div className="local-preview"><Feed stream={view.local} muted/>{!view.camera&&<div className="camera-off"><CameraOff/><span>Camera off</span></div>}<span className="video-label">You{view.mic?"":" · Muted"}</span></div>
+        </div>
+        <aside className="text-chat" aria-label="Text chat"><div className="chat-heading"><MessageSquare/><h2>Chat</h2><span>Just this call</span></div>
+          <div className="chat-messages" role="log" aria-live="polite">{!view.messages.length&&<p className="chat-empty">{view.canText?"Break the ice. Say hello!":"Messages will be available when you’re connected."}</p>}{view.messages.map((message,i)=><div className={`message ${message.from==="You"?"mine":""}`} key={i}><span>{message.from}</span><p>{message.text}</p></div>)}<div ref={messageEnd}/></div>
+          <form className="message-form" onSubmit={event=>{event.preventDefault();if(controller.current?.text(draft))setDraft("");}}><Input aria-label="Message" placeholder="Say something…" maxLength={2000} value={draft} onChange={event=>setDraft(event.target.value)} disabled={!view.canText}/><Button type="submit" size="icon" aria-label="Send message" disabled={!view.canText||!draft.trim()}><Send/></Button></form>
+        </aside>
+      </div>
+      <div className="random-toolbar" aria-label="Call controls">
+        <div className="main-controls"><Button size="lg" onClick={()=>void next()} disabled={busy||view.phase==="starting"}><Shuffle/> Next</Button><Button variant="destructive" size="lg" onClick={()=>{setBusy(true);void controller.current?.stop().finally(()=>setBusy(false));}}><PhoneOff/> Stop</Button></div>
+        <div className="media-controls"><Button variant="secondary" aria-pressed={!view.mic} onClick={()=>controller.current?.mute()} disabled={!view.local}>{view.mic?<Mic/>:<MicOff/>}{view.mic?"Mute":"Unmute"}</Button><Button variant="secondary" aria-pressed={!view.camera} onClick={()=>controller.current?.camera()} disabled={!view.local}>{view.camera?<Camera/>:<CameraOff/>}{view.camera?"Camera off":"Camera on"}</Button><Button variant="secondary" onClick={()=>void controller.current?.switchCamera()} disabled={!view.local||view.switching}><SwitchCamera/>{view.switching?"Switching…":"Switch camera"}</Button></div>
+        <div className="safety-controls"><Button variant="ghost" onClick={()=>setReport(true)} disabled={!view.room||busy}><Flag/> Report</Button><Button variant="ghost" onClick={()=>void next("block")} disabled={!view.room||busy}><Ban/> Block</Button></div>
+      </div>
+      {notice&&<p className="action-notice" role="status">{notice}</p>}
+    </section>}
+    <footer className="app-footer"><span>© 2026 Jayant Adhikary</span><span>18+ · Be kind. Stay curious.</span></footer>
+    <Dialog open={report} onOpenChange={setReport}><DialogContent><DialogHeader><DialogTitle>Report this conversation</DialogTitle><DialogDescription>Your report is saved for review. Submitting also blocks this person and moves you to the next chat. No video or chat transcript is attached.</DialogDescription></DialogHeader><label htmlFor="report-reason">What happened?</label><NativeSelect id="report-reason" value={reason} onChange={event=>setReason(event.target.value)}>{["Nudity or sexual content","Harassment or hate","Spam or scam","Underage user","Other"].map(value=><NativeSelectOption key={value}>{value}</NativeSelectOption>)}</NativeSelect><p className="safety-note">This is an early version; reports aren’t monitored live. Blocking applies while this browser keeps its guest cookie.</p><DialogFooter><Button variant="outline" onClick={()=>setReport(false)}>Cancel</Button><Button onClick={()=>void next("report")} disabled={busy||!view.room}>{busy?"Saving…":"Report and next"}</Button></DialogFooter></DialogContent></Dialog>
+  </main>;
 }

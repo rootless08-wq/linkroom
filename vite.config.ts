@@ -13,7 +13,7 @@ export default defineConfig({
       viteEnvironment: { name: "rsc", childEnvironments: ["ssr"] },
       inspectorPort: false,
       config: {
-        main: "vinext/server/fetch-handler",
+        main: "worker.ts",
         compatibility_flags: ["nodejs_compat"],
         d1_databases: [
           {
@@ -26,3 +26,4 @@ export default defineConfig({
     }),
   ],
 });
+
