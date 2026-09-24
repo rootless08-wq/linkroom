@@ -40,6 +40,10 @@ The camera tests use simulated devices. Test with two real devices to verify cam
 
 ## Cloudflare deployment
 
+The existing `linkroom` Worker is connected to this repository's `main` branch through Cloudflare Workers Builds. Its build uses Node.js 24, sets `CLOUDFLARE_D1_DATABASE_ID` to the existing database ID, and runs `pnpm run build`. The deploy command is `pnpm exec wrangler deploy --config dist/server/wrangler.json --name linkroom`. Preview builds are disabled. Deployment credentials are held by Cloudflare.
+
+The random-chat migration `0002_nice_champions.sql` was applied to the existing production D1 database on 2026-09-24. Existing private-room tables were retained. Apply future migrations before deploying code that requires them.
+
 For the standalone GitHub project, copy `wrangler.example.jsonc` to the ignored `wrangler.jsonc`, insert your existing D1 database ID, and authenticate Wrangler. Keep the Worker name `linkroom` to update the existing URL. Apply only unapplied migrations in `drizzle/`, then build and deploy. Do not recreate the database or run old migrations again.
 
 For the managed Sites project, `.openai/hosting.json` declares the existing DB binding; the Sites deployment workflow applies migrations and publishes the Worker. Do not commit credentials, local runtime caches, or environment secrets to GitHub.
@@ -64,3 +68,4 @@ For the managed Sites project, `.openai/hosting.json` declares the existing DB b
 3. Add authenticated accounts, stronger rate limits and abuse controls, a moderator workflow, and retention policies before broader promotion.
 4. Add payments and ads only after account and moderation foundations are ready. Select providers for the business jurisdiction at that time.
 5. Load-test concurrency and track actual relay bandwidth and database usage before increasing hosting capacity.
+
