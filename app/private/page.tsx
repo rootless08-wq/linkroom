@@ -216,7 +216,13 @@ export default function Home() {
       for (let attempt = 0; attempt < 3; attempt += 1) {
         const code = createRoomCode();
         const response = await fetch("/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code }), signal: AbortSignal.timeout(15000) });
-        if (response.ok) { await enterRoom(code, "host", name); return { room: code }; }
+        if (response.ok) {
+          setRoomCode(code);
+          setRole("host");
+          window.history.replaceState({}, "", `${window.location.pathname}?room=${code}&host=1`);
+          await enterRoom(code, "host", name);
+          return { room: code };
+        }
         if (response.status !== 409) {
           const result = await response.json().catch(() => ({})) as { error?: string };
           throw new Error(result.error || "Could not create a room. Please try again.");
@@ -265,7 +271,7 @@ export default function Home() {
     finally { setSwitchingCamera(false); }
   };
   const copyInvite = async () => { if (!inviteUrl) return; await navigator.clipboard.writeText(inviteUrl); setCopied(true); window.setTimeout(() => setCopied(false), 1800); };
-  const inCall = Boolean(roomCode && ["starting", "waiting", "connecting", "connected"].includes(callState));
+  const inCall = Boolean(roomCode && ["starting", "waiting", "connecting", "connected", "error"].includes(callState));
   useEffect(() => {
     if (inCall && localVideoRef.current) localVideoRef.current.srcObject = localStreamRef.current;
   }, [inCall]);
@@ -293,9 +299,11 @@ export default function Home() {
               </div>
             </div>
             <div className="call-controls" aria-label="Call controls">
-              <Tooltip><TooltipTrigger asChild><Button size="icon-lg" variant={micOn ? "secondary" : "destructive"} onClick={toggleMic} aria-label={micOn ? "Mute microphone" : "Unmute microphone"}>{micOn ? <Mic /> : <MicOff />}</Button></TooltipTrigger><TooltipContent>{micOn ? "Mute" : "Unmute"}</TooltipContent></Tooltip>
-              <Tooltip><TooltipTrigger asChild><Button size="icon-lg" variant={cameraOn ? "secondary" : "destructive"} onClick={toggleCamera} aria-label={cameraOn ? "Turn camera off" : "Turn camera on"}>{cameraOn ? <Camera /> : <CameraOff />}</Button></TooltipTrigger><TooltipContent>{cameraOn ? "Camera off" : "Camera on"}</TooltipContent></Tooltip>
-              <Button variant="secondary" onClick={() => void switchCamera()} disabled={switchingCamera}><SwitchCamera />{switchingCamera ? "Switching…" : "Switch camera"}</Button>
+              {callState === "error" && <Button variant="secondary" onClick={() => void enterRoom(roomCode, role)}><Camera /> Try camera again</Button>}
+              {callState === "starting" && <span role="status">Allow camera and microphone access to join the call.</span>}
+              <Tooltip><TooltipTrigger asChild><Button size="icon-lg" variant={micOn ? "secondary" : "destructive"} onClick={toggleMic} disabled={!localStreamRef.current} aria-label={micOn ? "Mute microphone" : "Unmute microphone"}>{micOn ? <Mic /> : <MicOff />}</Button></TooltipTrigger><TooltipContent>{micOn ? "Mute" : "Unmute"}</TooltipContent></Tooltip>
+              <Tooltip><TooltipTrigger asChild><Button size="icon-lg" variant={cameraOn ? "secondary" : "destructive"} onClick={toggleCamera} disabled={!localStreamRef.current} aria-label={cameraOn ? "Turn camera off" : "Turn camera on"}>{cameraOn ? <Camera /> : <CameraOff />}</Button></TooltipTrigger><TooltipContent>{cameraOn ? "Camera off" : "Camera on"}</TooltipContent></Tooltip>
+              <Button variant="secondary" onClick={() => void switchCamera()} disabled={switchingCamera || !localStreamRef.current}><SwitchCamera />{switchingCamera ? "Switching…" : "Switch camera"}</Button>
               <Button className="end-call" onClick={endCall}><PhoneOff /> End call</Button>
             </div>
           </section>
