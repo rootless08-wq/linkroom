@@ -2,6 +2,7 @@
 @import "tw-animate-css";
 @import "../vendor/shadcn-tailwind-4.13.0.css";
 
+
 :root {
   --background: #07111f; --foreground: #f4f7fb; --card: #0e1b2c; --card-foreground: #f4f7fb;
   --popover: #122238; --popover-foreground: #f4f7fb; --primary: #70ebc7; --primary-foreground: #052119;
@@ -173,3 +174,42 @@ button, input { font: inherit; }
   .home-intro h1 { font-size: clamp(3rem, 5.4vw, 5.5rem); line-height: 1.03; }
   .home-grid { padding-block: 30px; gap: 48px; }
 }
+
+.live-active{height:100dvh;min-height:560px;grid-template-rows:64px minmax(0,1fr) 30px}
+.live-active .topbar{height:64px}
+.live-active .app-footer{padding-bottom:8px}
+.live-stage{position:relative;z-index:1;width:min(1480px,calc(100% - 40px));margin:0 auto;display:flex;flex-direction:column;min-height:0;gap:12px;padding:16px 0}
+.live-stage .session-heading{min-height:38px}
+.live-stage .session-heading p{font-size:.92rem;margin-top:4px;line-height:1.4}
+.live-stage .session-heading .eyebrow{font-size:.7rem}
+.live-stage .session-badge{display:flex;align-items:center;gap:9px}
+.live-conversation{display:flex;gap:14px;flex:1;min-height:0;position:relative}
+.live-conversation .video-arena{flex:1;min-width:0}
+.live-conversation .call-chat-panel{height:100%;min-height:0;flex:none;width:330px}
+.live-stage .local-preview{width:clamp(140px,23%,230px)}
+.live-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px;border:1px solid #29405d;border-radius:18px;background:#0c192a;flex:none}
+.media-tools,.social-tools,.session-tools{display:flex;align-items:center;gap:8px}
+.call-tool{height:46px;min-width:66px;display:flex;align-items:center;justify-content:center;gap:7px;border:1px solid #304359;border-radius:12px;background:#172331;color:#f0f6ff;padding:0 12px;font-size:.82rem;cursor:pointer}
+.call-tool svg{width:18px;height:18px;flex:none}
+.call-tool:hover{background:#253c4e}
+.call-tool:disabled{opacity:.45;cursor:default}
+.call-tool.is-off{background:#513040;border-color:#855162}
+.call-tool:focus-visible,.effect-picker button:focus-visible{outline:2px solid #70ebc7;outline-offset:3px}
+.live-toolbar .chat-toggle{height:46px}
+.live-toolbar .session-tools>button{height:46px}
+.effect-picker{position:absolute;left:14px;top:14px;z-index:15;display:flex;flex-wrap:wrap;gap:7px;max-width:calc(100% - 28px);background:#102437ed;border:1px solid #55727e;padding:12px;border-radius:15px;box-shadow:0 8px 30px #0006}
+.effect-picker button{border:1px solid #354d60;padding:9px 13px;border-radius:9px;font-size:.8rem;cursor:pointer;background:#1b3143}
+.effect-picker button[aria-pressed=true]{background:#70ebc7;color:#062119;border-color:#70ebc7}
+.effect-picker p{width:100%;font-size:.7rem;color:#afc8d4;margin:2px 0 0}
+.play-video{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:4;padding:12px 18px;background:#70ebc7;color:#052119;border-radius:10px;border:0;cursor:pointer}
+.invitation-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#112d2a99;border:1px solid #386659;border-radius:13px;padding:10px 14px;flex-wrap:wrap}
+.invitation-bar>div{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.invitation-bar strong{letter-spacing:.12em;font-size:.9rem}
+.invitation-bar small{font-size:.72rem;color:#9fc4ba}
+.invitation-bar .eyebrow{font-size:.64rem}
+.copy-fallback{width:100%;font-size:.8rem;color:#bfd8d1}
+.inline-notice{margin:0;padding:8px 12px;border-radius:10px;background:#16473e;color:#d1f9ed;font-size:.8rem}
+.live-stage .video-empty{padding-bottom:100px}
+@media(max-width:1100px){.call-tool{min-width:48px;padding:0 10px}.call-tool span{display:none}.live-conversation .call-chat-panel{width:300px}.live-toolbar{gap:8px}.live-stage{width:calc(100% - 28px)}.invitation-bar small{display:none}}
+@media(max-width:760px){.live-active{height:100dvh;min-height:600px;grid-template-rows:60px minmax(0,1fr) 24px}.live-active .topbar{height:60px}.live-stage{padding:10px 0;gap:9px;width:calc(100% - 20px)}.live-stage .session-heading p{font-size:.78rem;max-width:95%}.live-stage .session-badge{display:none}.live-stage .session-heading .eyebrow{font-size:.63rem}.live-toolbar{flex-wrap:wrap;justify-content:center;gap:9px;padding:9px}.media-tools{flex:1;justify-content:center}.call-tool{min-width:45px;height:42px;padding:0 8px}.social-tools{gap:7px}.live-toolbar .chat-toggle{height:42px;padding:8px 10px;font-size:.75rem}.session-tools{flex-basis:100%;justify-content:center}.live-toolbar .session-tools>button{height:40px}.live-conversation .call-chat-panel{position:absolute;inset:0 0 0 auto;z-index:25;width:min(100%,360px);height:100%;max-height:none;border:1px solid #537284}.live-stage .local-preview{width:32%;right:9px;bottom:9px;min-width:100px}.invitation-bar{padding:7px 9px;gap:5px}.invitation-bar>div{gap:8px}.invitation-bar strong{font-size:.76rem}.invitation-bar button{font-size:.76rem;height:34px;padding-inline:8px}.invitation-bar .eyebrow{display:none}.live-stage .video-empty strong{font-size:.9rem}.live-stage .video-empty small{font-size:.75rem}.live-stage .video-empty{padding-inline:18px}.live-stage .signal-orbit{width:48px;height:48px}.effect-picker{gap:5px;padding:8px;left:8px;top:8px;max-width:calc(100% - 16px)}.effect-picker button{padding:7px 9px;font-size:.72rem}}
+@media(max-width:390px){.live-toolbar .chat-toggle span:not(.chat-unread){display:none}.media-tools{flex:0}.call-tool{min-width:40px}.live-stage .session-heading p{font-size:.74rem}}

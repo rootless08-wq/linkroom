@@ -10,7 +10,9 @@ A free-first one-to-one video chat MVP by Jayant Adhikary. Meet someone at rando
 - Mute, Camera Off, and Switch Camera without ending the call
 - Laptop-friendly call layout, small self-preview, and responsive mobile controls
 - Reports stored for review and server-enforced guest blocking
-- Existing private rooms, invitation links, and six-character codes
+- Secure private invitations with a 24-hour joining window, two-person admission, and refresh recovery
+- Shared reactions and Original, Warm, Cool, Mono, and Soft video filters
+- Side chat with opt-in photos, videos, audio, GIFs, and files (up to 20 MB each)
 
 ## Free-first architecture
 
@@ -24,7 +26,6 @@ Use Node.js 24 (22.18+ also supports the TypeScript tests) and pnpm 11.25.0.
 
 ```sh
 pnpm install --frozen-lockfile
-pnpm exec drizzle-kit generate
 pnpm dev
 ```
 
@@ -46,7 +47,7 @@ The random-chat migration `0002_nice_champions.sql` was applied to the existing 
 
 For the standalone GitHub project, copy `wrangler.example.jsonc` to the ignored `wrangler.jsonc`, insert your existing D1 database ID, and authenticate Wrangler. Keep the Worker name `linkroom` to update the existing URL. Apply only unapplied migrations in `drizzle/`, then build and deploy. Do not recreate the database or run old migrations again.
 
-For the managed Sites project, `.openai/hosting.json` declares the existing DB binding; the Sites deployment workflow applies migrations and publishes the Worker. Do not commit credentials, local runtime caches, or environment secrets to GitHub.
+Migration `0003_secure_private_rooms.sql` was applied to the existing production database on 2026-09-26. It adds separate secure-room tables and retains earlier tables. Apply it once to other environments before deploying this update. Do not commit credentials, local runtime caches, or environment secrets to GitHub.
 
 ## Behavior and boundaries
 
@@ -57,7 +58,9 @@ For the managed Sites project, `.openai/hosting.json` declares the existing DB b
 - Reports store the reason, guest identifiers, room identifier, and timestamp, with `pending` status. Review `chat_reports` through authenticated D1 administration. There is no public moderation API, live moderation team, or automatic enforcement beyond blocking the reported guest for the reporter.
 - Temporary random-chat signaling is pruned after ten minutes and inactive guest rows after one day when sessions initialize. Reports and blocks remain until an operator reviews or removes them. Browser text history is not saved.
 - STUN is configured; TURN is not. Restrictive networks may fail to connect. No 100,000-users/day capacity claim is made.
-- Private invitation rooms retain their earlier code-based signaling implementation. Treat the invite link as a secret.
+- Private room keys use random 256-bit invitation capabilities in URL fragments. Each member has a separate credential, hashed at rest and checked on every signaling request. Invitations expire after 24 hours; authenticated activity renews the room session. Older six-character invitations must be recreated.
+- Attachments need receiver acceptance before transfer. Transfers have backpressure, cancellation, timeouts, size limits and a 40 MB retained-download budget. HTML/SVG are download-only. This is not malware scanning. History and temporary download URLs are cleared on leaving or changing partners.
+- Original video bypasses effect processing until an effect is selected. Requested capture is up to 720p at 30 fps; actual quality depends on device and network. The browser adapts bitrate. Filters process locally; reactions are shared over the data channel. These are browser effects, not Apple FaceTime or face tracking.
 
 ## Upgrade path
 
@@ -69,3 +72,6 @@ For the managed Sites project, `.openai/hosting.json` declares the existing DB b
 4. Add payments and ads only after account and moderation foundations are ready. Select providers for the business jurisdiction at that time.
 5. Load-test concurrency and track actual relay bandwidth and database usage before increasing hosting capacity.
 
+## Browser integration check
+
+Run `node tests/preview-server.mjs` and open `http://127.0.0.1:3001/__test`. This local-only harness uses in-memory SQLite, generated video/silent audio, and two real browser peer connections. It tests connection, text, reactions, consented file transfer, filters, toggles and refresh recovery without accessing physical media devices. The harness is not a production route.

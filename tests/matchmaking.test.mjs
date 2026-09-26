@@ -31,6 +31,8 @@ test('atomic pairing, room isolation, Next, Stop, blocks and durable reports', a
   await command(db,a,{type:'join'});assert.equal((await guest(db,b)).state,'waiting');
   assert.equal((await guest(db,a)).state,'waiting');
   await assert.rejects(command(db,a,{type:'signal',room,kind:'ice',payload:{}}),/ended/);
+  // A and B can requeue within the same millisecond; make queue order explicit.
+  sql.prepare('UPDATE chat_guests SET queued=? WHERE id=?').run(Date.now()-100,b);
   await command(db,c,{type:'join'});assert.equal((await guest(db,c)).partner,b);
   await command(db,d,{type:'join'});assert.equal((await guest(db,d)).partner,a);
   const reportRoom=(await guest(db,a)).room;

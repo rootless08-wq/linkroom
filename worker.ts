@@ -3,6 +3,19 @@ import { identity, sameOrigin, initialize, command, snapshot, cleanup } from "./
 
 const worker = {
   async fetch(request: Request, env: Cloudflare.Env, ctx: ExecutionContext) {
+    const response = await route(request, env, ctx);
+    if (response.status === 101) return response;
+    const secured = new Response(response.body, response);
+    secured.headers.set("X-Content-Type-Options", "nosniff");
+    secured.headers.set("Referrer-Policy", "no-referrer");
+    secured.headers.set("Permissions-Policy", "camera=(self), microphone=(self), geolocation=()");
+    secured.headers.set("Content-Security-Policy", "frame-ancestors 'none'; object-src 'none'; base-uri 'self'");
+    if (new URL(request.url).pathname.startsWith("/api/")) secured.headers.set("Cache-Control", "no-store");
+    return secured;
+  },
+};
+const router = {
+  async fetch(request: Request, env: Cloudflare.Env, ctx: ExecutionContext) {
     const url = new URL(request.url);
     if (!url.pathname.startsWith("/api/chat")) return handler.fetch(request, env, ctx);
     if (!env.DB) return Response.json({ error: "Chat is temporarily unavailable" }, { status: 503 });
@@ -68,4 +81,5 @@ const worker = {
     }
   },
 };
+const route = router.fetch;
 export default worker;

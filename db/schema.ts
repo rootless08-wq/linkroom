@@ -55,3 +55,35 @@ export const chatReports = sqliteTable("chat_reports", {
   created: integer("created").notNull(),
   status: text("status").notNull().default("pending"),
 });
+
+// Preserve historical room data while retiring the older invitation format.
+export const privateRooms = sqliteTable("private_rooms", {
+  code: text("code").primaryKey(),
+  inviteHash: text("invite_hash").notNull(),
+  inviteExpiresAt: integer("invite_expires_at").notNull(),
+  expiresAt: integer("expires_at").notNull(),
+  hostId: text("host_id").notNull(),
+  hostHash: text("host_hash").notNull(),
+  guestId: text("guest_id"),
+  guestHash: text("guest_hash"),
+  generation: integer("generation").notNull().default(0),
+  closed: integer("closed").notNull().default(0),
+  createdAt: integer("created_at").notNull(),
+}, (t) => [index("idx_private_rooms_expiry").on(t.expiresAt)]);
+
+export const privateSignals = sqliteTable("private_signals", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  roomCode: text("room_code").notNull(),
+  recipientId: text("recipient_id").notNull(),
+  senderId: text("sender_id").notNull(),
+  generation: integer("generation").notNull(),
+  kind: text("kind").notNull(),
+  payload: text("payload").notNull(),
+  createdAt: integer("created_at").notNull(),
+}, (t) => [index("idx_private_signals_recipient").on(t.roomCode, t.recipientId, t.id), index("idx_private_signals_created").on(t.createdAt)]);
+
+export const privateRateLimits = sqliteTable("private_rate_limits", {
+  bucket: text("bucket").primaryKey(),
+  count: integer("count").notNull(),
+  expiresAt: integer("expires_at").notNull(),
+}, (t) => [index("idx_private_rate_expiry").on(t.expiresAt)]);
