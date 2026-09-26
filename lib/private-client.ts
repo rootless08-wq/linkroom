@@ -26,13 +26,20 @@ export class PrivateChat extends CallMedia {
   private closing = false;
   constructor(changed:(view:PrivateView)=>void) { super(view=>changed(view as PrivateView)); this.state=initialPrivateView(); }
   private publish(patch:Partial<PrivateView>) { this.state={...this.state,...patch}; this.update({}); }
-  private async request(path:string,body?:unknown,credentials=this.membership,keepalive=false) {
+  private async request(path:string,body?:unknown,credentials=this.membership,keepalive=false,retry=true):Promise<Membership & { error?:string; after:number; signals:{ id:number; kind:string; payload:RTCSessionDescriptionInit & RTCIceCandidateInit & {session?:string;to?:string;reconnect?:boolean} }[] }> {
+    try {
     const response = await fetch(path,{method:body?"POST":"GET",cache:"no-store",
       headers:{...(body?{"Content-Type":"application/json"}:{}),...(credentials?{Authorization:`Bearer ${credentials.participant.token}`}:{})},
       ...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(12000),keepalive});
     const data = await response.json() as Membership & { error?:string; after:number; signals:{ id:number; kind:string; payload:RTCSessionDescriptionInit & RTCIceCandidateInit & {session?:string;to?:string;reconnect?:boolean} }[] };
     if (!response.ok) throw new RoomError(data.error || "Room service unavailable. Try again shortly.",response.status);
     return data;
+    } catch(error) {
+      // Only replay reads. Creating/joining a room must never claim a second seat.
+      const temporary=error instanceof TypeError || (error instanceof Error && ["TimeoutError","AbortError"].includes(error.name)) || (error instanceof RoomError && error.status>=500);
+      if (!body && retry && temporary && this.active) return this.request(path,body,credentials,keepalive,false);
+      throw error;
+    }
   }
   private remember() {
     if (!this.membership) return;
@@ -89,6 +96,7 @@ export class PrivateChat extends CallMedia {
   }
   private async connect(epoch:number) {
     await this.acquireMedia(epoch); if (!this.current(epoch)) return;
+    this.publish({status:"Camera ready. Connecting to your room…"});
     this.session=crypto.randomUUID(); this.peerSession=""; this.ice=[]; this.restarts=0;
     const fresh=await this.request(`/api/signals?room=${this.state.room}&fresh=1`);
     if (!this.current(epoch)) return;
